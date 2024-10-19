@@ -1,27 +1,28 @@
-
 module Lib2
     ( Query(..),
-    parseQuery,
-    State(..),
-    emptyState,
-    stateTransition,
-    or2,
-    parseAddMovie,
-    parseRemoveMovie,
-    parseCompoundQuery,
-    parseNum,
-    wordsBy,
-    addMovieTransition,
-    removeMovieTransition,
-    printMoviesTransition,
-    removeMovie,
-    addMovie,
-    printMovie,
-    printMovies,
-    Movie(director, title, year, id)
+      State(..),
+      Movie(..),
+      or2,
+      wordsBy,
+      emptyState,
+      stateTransition,
+      parseNum,
+      parseQuery,
+      parseState,
+      parseMovie,
+      parseAddMovie,
+      parseRemoveMovie,
+      parseCompoundQuery,
+      addMovieTransition,
+      removeMovieTransition,
+      printMoviesTransition,
+      addMovie,
+      removeMovie,
+      printMovie,
+      printMovies,
     ) where
 
-import Data.Char as C (isDigit)
+import Data.Char as C (isDigit, isAlpha)
 
 -- main data type
 data Movie = Movie {
@@ -31,6 +32,7 @@ data Movie = Movie {
     id :: Integer
     } deriving (Show, Eq)
 
+-- query type
 data Query =  AddMovie String String Integer Integer
             | RemoveMovie Integer
             | PrintMovies
@@ -50,6 +52,9 @@ instance Eq Query where
         q1a == q2a && q1b == q2b
 
     _ == _ = False
+
+instance Eq State where
+  (State movies1) == (State movies2) = movies1 == movies2
 
 instance Show Query where
     show (AddMovie d t y i) =
@@ -71,11 +76,11 @@ emptyState = State []
 
 -- Utility to apply to parsers and get either first or second
 or2 :: Parser a -> Parser a -> Parser a
-or2 a b input
-  = case a input of
+or2 a b output
+  = case a output of
       Right r1 -> Right r1
       Left e1
-        -> case b input of
+        -> case b output of
              Right r2 -> Right r2
              Left e2 -> Left (e1 ++ ", " ++ e2)
 
@@ -89,16 +94,45 @@ parseQuery input =
       ("compound-query" : rest) -> parseCompoundQuery (unwords rest)
       _ -> Left "Invalid command."
 
+-- Parser for state
+parseState :: Parser State
+parseState input =
+    let moviesStr = wordsBy (== ' ') input
+    in case traverse parseMovie moviesStr of
+        Right moviesWithRest -> 
+            let movies = map fst moviesWithRest
+                rest = concatMap snd moviesWithRest
+            in Right (State movies, rest)
+        Left err -> Left err
+
+-- Parser for movies
+parseMovie :: Parser Movie
+parseMovie input =
+    case wordsBy (== '/') input of
+        [d, t, y, i] ->
+            case (parseString d, parseString t, parseNum y, parseNum i) of
+                (Right (d', _), Right (t', _), Right (y', _), Right (i', _)) ->
+                    Right (Movie d' t' y' i', "")
+                (Left _, _, _, _) -> Left "Invalid add-movie director"
+                (_, Left _, _, _) -> Left "Invalid add-movie title"
+                (_, _, Left _, _) -> Left "Invalid add-movie year"
+                (_, _, _, Left _) -> Left "Invalid add-movie id"
+        _ -> Left "Invalid add-movie input format"
+
+
 -- Parser for add-movie
 parseAddMovie :: Parser Query
 parseAddMovie input =
     let (_, afterSlash) = break (== '/') input
-    in case wordsBy ('/' ==) afterSlash of
-        [d, t, y, i] ->
-            case (parseNum y, parseNum i) of
-                (Right (y', _), Right (idNum, _)) ->
-                    Right (AddMovie d t y' idNum, "")
-                _ -> Left "Invalid year or ID in add-movie"
+    in case wordsBy (== '/') afterSlash of
+        [d, t, y, i] -> 
+            case (parseString d, parseString t, parseNum y, parseNum i) of
+                (Right (d', _), Right (t', _), Right (y', _), Right (i', _)) ->
+                    Right (AddMovie d' t' y' i', "")
+                (Left _, _, _, _) -> Left "Invalid add-movie director"
+                (_, Left _, _, _) -> Left "Invalid add-movie title"
+                (_, _, Left _, _) -> Left "Invalid add-movie year"
+                (_, _, _, Left _) -> Left "Invalid add-movie id"
         _ -> Left "Invalid add-movie input format"
 
 -- Parser for remove-movie
@@ -119,14 +153,25 @@ parseCompoundQuery input =
                 _ -> Left "Invalid subqueries in compound-query"
         _ -> Left "Invalid compound-query format"
 
+-- Helper function to parse a alpahbetic value
+parseString :: Parser String
+parseString input =
+    let chars = takeWhile isAlpha input
+        rest = drop (length chars) input
+    in if null chars
+        then Left "Expected a string"
+        else Right (chars, rest)
+
 -- Helper function to parse a number
 parseNum :: Parser Integer
 parseNum input =
     let digits = takeWhile isDigit input
         rest = drop (length digits) input
-    in if null digits then Left "Expected a number" else Right (read digits, rest)
+    in if null digits
+        then Left "Expected a number"
+        else Right (read digits, rest)
 
--- Helper function to split by a given delimiter
+-- Helper function to split words by specified symbol
 wordsBy :: (Char -> Bool) -> String -> [String]
 wordsBy p s =
     case dropWhile p s of
@@ -135,8 +180,9 @@ wordsBy p s =
               where (w, s'') = break p s'
 
 
--- Updates the state according to a query.
+-- stateTransition definition.
 stateTransition :: State -> (Query, String) -> Either String (Maybe String, State)
+
 -- Handle AddMovie
 stateTransition (State movies) (AddMovie d t y i, _) =
     let newMovie = Movie d t y i
@@ -208,7 +254,7 @@ printMovies :: [Movie] -> String
 printMovies [] = "No movies to display"
 printMovies movies = unlines $ map printMovie movies
 
--- Sample movie list
+-- Simple movie list for debugging
 movie1 :: Movie
 movie1 = Movie "Pirmas" "Filmas#1" 1999 1
 
