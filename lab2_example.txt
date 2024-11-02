@@ -1,0 +1,8 @@
+add-movie /Rezisierius/Filmas/2024/1
+add-movie /Vienas/Du/1999/2
+print-movies
+remove-movie 1
+print-movies
+compound-query add-movie /One/Two/2004/3 & print-movies
+compound-query add-movie /Tuoj/Trinsim/1850/4 & remove-movie 4
+print-movies

@@ -9,3 +9,7 @@
 ### To Build & Test the Project, run the following commands
 1. `stack build`
 2. `stack test`
+
+### BNF
+1. Added **Compound-query** command to have a recursive query
+2. Deleted \<string\>, \<integer\>, \<digit\> because they serve no purpose in the program

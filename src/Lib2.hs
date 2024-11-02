@@ -3,26 +3,20 @@ module Lib2
       State(..),
       Movie(..),
       or2,
-      wordsBy,
       emptyState,
       stateTransition,
+      parseString,
       parseNum,
+      parseWhitespaces,
       parseQuery,
-      parseState,
-      parseMovie,
       parseAddMovie,
       parseRemoveMovie,
-      parseCompoundQuery,
-      addMovieTransition,
-      removeMovieTransition,
-      printMoviesTransition,
-      addMovie,
-      removeMovie,
-      printMovie,
-      printMovies,
+      parsePrintMovies,
+      parseCompoundQuery
     ) where
 
 import Data.Char as C (isDigit, isAlpha)
+import Data.List (isPrefixOf)
 
 -- main data type
 data Movie = Movie {
@@ -61,7 +55,7 @@ instance Show Query where
         "AddMovie: Director = " ++ d ++ ", Title = " ++ t ++ ", Year = " ++ show y ++ ", ID = " ++ show i
     show (RemoveMovie idNum) =
         "RemoveMovie: ID = " ++ show idNum
-    show PrintMovies = printMovies movieList
+    show PrintMovies = "Current movies: "
     show (CompoundQuery q1 q2 ) = show q1 ++ " & " ++ show q2
 
 -- Define the Parser type
@@ -76,109 +70,152 @@ emptyState = State []
 
 -- Utility to apply to parsers and get either first or second
 or2 :: Parser a -> Parser a -> Parser a
-or2 a b output
-  = case a output of
-      Right r1 -> Right r1
-      Left e1
-        -> case b output of
-             Right r2 -> Right r2
-             Left e2 -> Left (e1 ++ ", " ++ e2)
+or2 a b input =
+    case a input of
+        Right c -> Right c
+        Left "" -> 
+            case b input of
+                Right c -> Right c
+                Left err -> Left err
+        Left err -> Left err
 
 -- Parser for a whole query
 parseQuery :: Parser Query
-parseQuery input =
-    case words input of
-      ("add-movie" : rest) -> parseAddMovie (unwords rest)
-      ("remove-movie" : rest) -> parseRemoveMovie (unwords rest)
-      ("print-movies" : _) -> Right (PrintMovies, "")
-      ("compound-query" : rest) -> parseCompoundQuery (unwords rest)
-      _ -> Left "Invalid command."
+parseQuery input = case (parseAddMovie `or2` parseRemoveMovie `or2` parsePrintMovies `or2` parseCompoundQuery) input of
+    Left "" -> Left "Invalid command."
+    Left msg -> Left msg
+    query -> query    
 
--- Parser for state
-parseState :: Parser State
-parseState input =
-    let moviesStr = wordsBy (== ' ') input
-    in case traverse parseMovie moviesStr of
-        Right moviesWithRest -> 
-            let movies = map fst moviesWithRest
-                rest = concatMap snd moviesWithRest
-            in Right (State movies, rest)
-        Left err -> Left err
-
--- Parser for movies
-parseMovie :: Parser Movie
-parseMovie input =
-    case wordsBy (== '/') input of
-        [d, t, y, i] ->
-            case (parseString d, parseString t, parseNum y, parseNum i) of
-                (Right (d', _), Right (t', _), Right (y', _), Right (i', _)) ->
-                    Right (Movie d' t' y' i', "")
-                (Left _, _, _, _) -> Left "Invalid add-movie director"
-                (_, Left _, _, _) -> Left "Invalid add-movie title"
-                (_, _, Left _, _) -> Left "Invalid add-movie year"
-                (_, _, _, Left _) -> Left "Invalid add-movie id"
-        _ -> Left "Invalid add-movie input format"
-
-
--- Parser for add-movie
+-- Parser for AddMovie
 parseAddMovie :: Parser Query
-parseAddMovie input =
-    let (_, afterSlash) = break (== '/') input
-    in case wordsBy (== '/') afterSlash of
-        [d, t, y, i] -> 
-            case (parseString d, parseString t, parseNum y, parseNum i) of
-                (Right (d', _), Right (t', _), Right (y', _), Right (i', _)) ->
-                    Right (AddMovie d' t' y' i', "")
-                (Left _, _, _, _) -> Left "Invalid add-movie director"
-                (_, Left _, _, _) -> Left "Invalid add-movie title"
-                (_, _, Left _, _) -> Left "Invalid add-movie year"
-                (_, _, _, Left _) -> Left "Invalid add-movie id"
-        _ -> Left "Invalid add-movie input format"
-
+parseAddMovie input = 
+    if "add-movie" `isPrefixOf` input then
+        let r = drop (length "add-movie") input
+        in case parseWhitespaces r of
+            Left _ -> Left "Invalid command"
+            Right (_, r0) ->
+                case r0 of
+                    ('/' : r1) -> 
+                        case parseString r1 of
+                            Left _ -> Left "Invalid add-movie director"
+                            Right (d, r2) ->  
+                                case r2 of
+                                    ('/' : r3) -> 
+                                        case parseString r3 of
+                                            Left _ -> Left "Invalid add-movie title"
+                                            Right (t, r4) ->  
+                                                case r4 of
+                                                    ('/' : r5) -> 
+                                                        case parseNum r5 of
+                                                            Left _ -> Left "Invalid add-movie year"
+                                                            Right (y, r6) ->  
+                                                                case r6 of
+                                                                    ('/' : r7) -> 
+                                                                        case parseNum r7 of
+                                                                            Left _ -> Left "Invalid add-movie id"
+                                                                            Right (i, rest) ->
+                                                                                case parseWhitespaces rest of
+                                                                                    Left _ -> Right (AddMovie d t y i, "")
+                                                                                    Right (_, rest2) ->
+                                                                                        if rest2 == "" then
+                                                                                            Right (AddMovie d t y i, "")
+                                                                                        else
+                                                                                            Left "Unexpected input after movie id"
+                                                    _ -> Left "Input does not start with a '/' separator after title"
+                                    _ -> Left "Input does not start with a '/' separator after director"
+                    _ -> Left "Input does not start with a '/' separator"
+    else Left ""
+        
 -- Parser for remove-movie
 parseRemoveMovie :: Parser Query
 parseRemoveMovie input =
-    case parseNum input of
-        Right (idNum, _) -> Right (RemoveMovie idNum, "")
-        _ -> Left "Invalid remove-movie input format"
+    if "remove-movie" `isPrefixOf` input then
+        let r = drop (length "remove-movie") input
+        in case parseWhitespaces r of
+            Left _ -> Left "Invalid command"
+            Right (_, r1) ->
+                case parseNum r1 of
+                    Right (idNum, rest) ->
+                        case parseWhitespaces rest of
+                            Left _ -> Right (RemoveMovie idNum, "")
+                            Right (_, rest2) ->
+                                if rest2 == "" then
+                                    Right (RemoveMovie idNum, "")
+                                else
+                                    Left "Unexpected input after id"
+                    _ -> Left "Invalid remove-movie input format"
+    else Left ""
+
+-- Parser for print-movies
+parsePrintMovies :: Parser Query
+parsePrintMovies input =
+    if "print-movies" `isPrefixOf` input then
+        let r = drop (length "print-movies") input
+        in case parseWhitespaces r of
+            Left _ -> Right (PrintMovies, "")
+            Right (_, r1) ->
+                if r1 == "" then
+                    Right (PrintMovies, "")
+                else
+                    Left "Unexpected input after print-movies command"
+    else Left ""
 
 -- Parser for compound-query
 parseCompoundQuery :: Parser Query
 parseCompoundQuery input =
-    let (q1Str, r) = break (== '&') input
-    in case r of
-        '&' : q2Str ->
-            case (parseQuery q1Str, parseQuery q2Str) of
-                (Right (q1, _), Right (q2, _)) -> Right (CompoundQuery q1 q2, "")
-                _ -> Left "Invalid subqueries in compound-query"
-        _ -> Left "Invalid compound-query format"
+    if "compound-query" `isPrefixOf` input then
+        let r0 = drop (length "compound-query") input
+        in case parseWhitespaces r0 of
+            Left _ -> Left "Expected whitespace after 'compound-query'"
+            Right (_, r1) ->
+                let (q1Str, r) = break (== '&') r1
+                in case r of
+                    '&' : rAfterAmpersand ->
+                        case parseWhitespaces rAfterAmpersand of
+                            Left _ -> Left "Expected valid subquery after '&'"
+                            Right (_, q2Str) ->
+                                case parseQuery q1Str of
+                                    Right (q1, "") ->
+                                        case parseQuery q2Str of
+                                            Right (q2, "") -> Right (CompoundQuery q1 q2, "")
+                                            Left err2 -> Left $ "Error in second subquery: " ++ err2
+                                    Left err1 -> Left $ "Error in first subquery: " ++ err1
+                    _ -> Left "Invalid compound-query format: '&' separator missing"
+    else Left ""
 
 -- Helper function to parse a alpahbetic value
 parseString :: Parser String
+parseString [] = Left "Empty input"
 parseString input =
-    let chars = takeWhile isAlpha input
+    let
+        chars = takeWhile isAlpha input
         rest = drop (length chars) input
-    in if null chars
-        then Left "Expected a string"
-        else Right (chars, rest)
+    in
+        case chars of
+            [] -> Left "Expected a char"
+            _ -> Right (chars, rest)
 
 -- Helper function to parse a number
 parseNum :: Parser Integer
+parseNum [] = Left "Empty input"
 parseNum input =
-    let digits = takeWhile isDigit input
+    let
+        digits = takeWhile isDigit input
         rest = drop (length digits) input
-    in if null digits
-        then Left "Expected a number"
-        else Right (read digits, rest)
+    in
+        case digits of
+            [] -> Left "Expected a number"
+            _ -> Right (read digits, rest)
 
--- Helper function to split words by specified symbol
-wordsBy :: (Char -> Bool) -> String -> [String]
-wordsBy p s =
-    case dropWhile p s of
-        "" -> []
-        s' -> w : wordsBy p s''
-              where (w, s'') = break p s'
-
+-- Helper function to parse a whitespace
+parseWhitespaces :: Parser String
+parseWhitespaces [] = Left "Empty input"
+parseWhitespaces str =
+  let
+    whitespaces = takeWhile (== ' ') str
+    rest = drop (length whitespaces) str
+  in 
+    Right (whitespaces, rest)
 
 -- stateTransition definition.
 stateTransition :: State -> (Query, String) -> Either String (Maybe String, State)
@@ -201,7 +238,9 @@ stateTransition (State movies) (RemoveMovie idNum, _) =
 stateTransition (State movies) (PrintMovies, _) =
     if null movies
     then Right (Just "No movies available.", State movies)
-    else Right (Just ("Current movies: " ++ printMovies movies), State movies)
+    else
+        let movieList = unlines (map show movies)
+        in Right (Just ("Current movies: " ++ movieList), State movies)
 
 -- Handle CompoundQuery
 stateTransition state (CompoundQuery q1 q2, a) =
@@ -209,60 +248,11 @@ stateTransition state (CompoundQuery q1 q2, a) =
         Right (msg1, newState) ->
             case stateTransition newState (q2, a) of
                 Right (msg2, finalState) ->
-                    let combinedMsg = unwords $ filter (not . null) [maybe "" Prelude.id msg1, maybe "" Prelude.id msg2]
+                    let combinedMsg = case (msg1, msg2) of
+                                          (Just m1, Just m2) | not (null m1) && not (null m2) -> Just (m1 ++ " " ++ m2)
+                                          (Just m1, _)       | not (null m1) -> Just m1
+                                          (_, Just m2)       | not (null m2) -> Just m2
+                                          _ -> Nothing
                     in Right (Just combinedMsg, finalState)
                 Left err -> Left err
         Left err -> Left err
-
--- Add movie to the state
-addMovieTransition :: State -> String -> String -> Integer -> Integer -> Either String (Maybe String, State)
-addMovieTransition (State newState) d t y i =
-    let newMovie = addMovie newState (Movie d t y i)
-    in Right (Just "Movie added", State newMovie)
-
--- Remove movie from the state
-removeMovieTransition :: State -> Integer -> Either String (Maybe String, State)
-removeMovieTransition (State newState) idNum =
-    let oldMovie = removeMovie newState idNum
-    in Right (Just "Movie removed", State oldMovie)
-
--- Print movies in the state
-printMoviesTransition :: State -> Either String (Maybe String, State)
-printMoviesTransition (State newState) =
-    let printer = printMovies newState
-    in Right (Just printer, State newState)
-
--- Helper to remove a movie from the list
-removeMovie :: [Movie] -> Integer -> [Movie]
-removeMovie [] _ = []
-removeMovie (Movie dir t y idNum : movies) n
-    | idNum == n = removeMovie movies n
-    | otherwise = Movie dir t y idNum : removeMovie movies n
-
--- Helper to add a movie to the list
-addMovie :: [Movie] -> Movie -> [Movie]
-addMovie movies n = movies ++ [n]
-
--- Helper to print a movie
-printMovie :: Movie -> String
-printMovie (Movie d t y i) =
-        "Director: " ++ d ++ ", Title: " ++ t ++
-        ", Year: " ++ show y ++ ", Id: " ++ show i
-
--- Helper to print all movies
-printMovies :: [Movie] -> String
-printMovies [] = "No movies to display"
-printMovies movies = unlines $ map printMovie movies
-
--- Simple movie list for debugging
-movie1 :: Movie
-movie1 = Movie "Pirmas" "Filmas#1" 1999 1
-
-movie2 :: Movie
-movie2 = Movie "Antras" "Filmas#2" 2000 2
-
-movie3 :: Movie
-movie3 = Movie "Trecias" "Filmas#3" 2004 3
-
-movieList :: [Movie]
-movieList = [movie1, movie2, movie3]
