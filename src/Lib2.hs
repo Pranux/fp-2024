@@ -113,14 +113,7 @@ parseAddMovie input =
                                                                     ('/' : r7) -> 
                                                                         case parseNum r7 of
                                                                             Left _ -> Left "Invalid add-movie id"
-                                                                            Right (i, rest) ->
-                                                                                case parseWhitespaces rest of
-                                                                                    Left _ -> Right (AddMovie d t y i, "")
-                                                                                    Right (_, rest2) ->
-                                                                                        if rest2 == "" then
-                                                                                            Right (AddMovie d t y i, "")
-                                                                                        else
-                                                                                            Left "Unexpected input after movie id"
+                                                                            Right (i, rest) -> Right (AddMovie d t y i, rest)
                                                     _ -> Left "Input does not start with a '/' separator after title"
                                     _ -> Left "Input does not start with a '/' separator after director"
                     _ -> Left "Input does not start with a '/' separator"
@@ -135,14 +128,7 @@ parseRemoveMovie input =
             Left _ -> Left "Invalid command"
             Right (_, r1) ->
                 case parseNum r1 of
-                    Right (idNum, rest) ->
-                        case parseWhitespaces rest of
-                            Left _ -> Right (RemoveMovie idNum, "")
-                            Right (_, rest2) ->
-                                if rest2 == "" then
-                                    Right (RemoveMovie idNum, "")
-                                else
-                                    Left "Unexpected input after id"
+                    Right (idNum, rest) -> Right (RemoveMovie idNum, rest)
                     _ -> Left "Invalid remove-movie input format"
     else Left ""
 
@@ -153,11 +139,7 @@ parsePrintMovies input =
         let r = drop (length "print-movies") input
         in case parseWhitespaces r of
             Left _ -> Right (PrintMovies, "")
-            Right (_, r1) ->
-                if r1 == "" then
-                    Right (PrintMovies, "")
-                else
-                    Left "Unexpected input after print-movies command"
+            Right (_, rest) -> Right (PrintMovies, rest)
     else Left ""
 
 -- Parser for compound-query
@@ -175,9 +157,9 @@ parseCompoundQuery input =
                             Left _ -> Left "Expected valid subquery after '&'"
                             Right (_, q2Str) ->
                                 case parseQuery q1Str of
-                                    Right (q1, "") ->
+                                    Right (q1, _) ->
                                         case parseQuery q2Str of
-                                            Right (q2, "") -> Right (CompoundQuery q1 q2, "")
+                                            Right (q2, rest) -> Right (CompoundQuery q1 q2, rest)
                                             Left err2 -> Left $ "Error in second subquery: " ++ err2
                                     Left err1 -> Left $ "Error in first subquery: " ++ err1
                     _ -> Left "Invalid compound-query format: '&' separator missing"
@@ -253,6 +235,6 @@ stateTransition state (CompoundQuery q1 q2, a) =
                                           (Just m1, _)       | not (null m1) -> Just m1
                                           (_, Just m2)       | not (null m2) -> Just m2
                                           _ -> Nothing
-                    in Right (Just combinedMsg, finalState)
+                    in Right (combinedMsg, finalState)
                 Left err -> Left err
         Left err -> Left err

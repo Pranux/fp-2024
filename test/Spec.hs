@@ -1,14 +1,74 @@
-{-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE BlockArguments #-}
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
-import Lib2 qualified
+import qualified Lib2
+import qualified Lib3
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [unitTests]
+tests = testGroup "Tests" [unitTests, unitTests']
+
+unitTests' :: TestTree
+unitTests' = testGroup "Lib3 tests"
+  [
+    -- parseCommand
+    testCase "Parse LOAD command" $
+      Lib3.parseCommand "LOAD" @?=
+        Right (Lib3.LoadCommand, ""),
+
+    testCase "Parse SAVE command" $
+      Lib3.parseCommand "SAVE" @?=
+        Right (Lib3.SaveCommand, ""),
+
+    testCase "Parse batch query statements" $
+      Lib3.parseCommand "BEGIN add-movie /Tom/Showdown/2022/100; remove-movie 100 END" @?=
+        Right (Lib3.StatementCommand (Lib3.Batch [ Lib2.AddMovie "Tom" "Showdown" 2022 100 , Lib2.RemoveMovie 100 ]), ""),
+
+    testCase "Parse batch query statements without ';'" $
+      Lib3.parseCommand "BEGIN add-movie /Tom/Showdown/2022/100 remove-movie 100 END" @?=
+        Right (Lib3.StatementCommand (Lib3.Batch [ Lib2.AddMovie "Tom" "Showdown" 2022 100 ]), ""),
+
+    testCase "Parse single query command" $
+      Lib3.parseCommand "add-movie /Tom/Showdown/2022/100" @?=
+        Right (Lib3.StatementCommand (Lib3.Single (Lib2.AddMovie "Tom" "Showdown" 2022 100)), ""),
+
+    -- parseStatements
+    testCase "Parse empty BEGIN-END block" $
+      Lib3.parseStatements "BEGIN END" @?=
+        Right (Lib3.Batch [], ""),
+
+    testCase "Parse multiple statements with whitespace" $
+      Lib3.parseStatements "BEGIN   add-movie /Tom/Showdown/2022/100 ; remove-movie 100   END" @?=
+        Right (Lib3.Batch [ Lib2.AddMovie "Tom" "Showdown" 2022 100, Lib2.RemoveMovie 100 ], ""),
+
+    testCase "Reject invalid BEGIN-END block" $
+      Lib3.parseStatements "BEGIN add-movie /Tom/Showdown/2022/100" @?=
+        Left "Expected 'END'",
+
+    -- marshallState
+    testCase "Marshall empty state" $
+      Lib3.marshallState (Lib2.State []) @?=
+        Lib3.Single Lib2.PrintMovies,
+
+    testCase "Marshall single movie state" $
+      Lib3.marshallState (Lib2.State [Lib2.Movie "Tom" "Showdown" 2022 100 ]) @?=
+        Lib3.Single (Lib2.AddMovie "Tom" "Showdown" 2022 100),
+
+    testCase "Marshall multiple movies state" $
+      Lib3.marshallState (Lib2.State [ Lib2.Movie "Tom" "Showdown" 2022 100, Lib2.Movie "Jane" "Blockbuster" 2023 101 ]) @?=
+        Lib3.Batch [ Lib2.AddMovie "Tom" "Showdown" 2022 100, Lib2.AddMovie "Jane" "Blockbuster" 2023 101 ],
+
+    -- renderStatements
+    testCase "Render single query" $
+      Lib3.renderStatements (Lib3.Single (Lib2.AddMovie "Tom" "Showdown" 2022 100)) @?=
+        "BEGIN add-movie /Tom/Showdown/2022/100 END",
+
+    testCase "Render batch queries" $
+      Lib3.renderStatements (Lib3.Batch [ Lib2.AddMovie "Tom" "Showdown" 2022 100, Lib2.RemoveMovie 100 ]) @?=
+        "BEGIN add-movie /Tom/Showdown/2022/100; remove-movie 100; END"
+  ]
+
 
 unitTests :: TestTree
 unitTests = testGroup "Lib2 tests"
@@ -120,5 +180,5 @@ unitTests = testGroup "Lib2 tests"
       Lib2.parseNum "100 word" @?= Right (100, " word"),
 
     testCase "Parse invalid number" $
-      Lib2.parseNum "abc abc" @?= Left "Expected a number",
+      Lib2.parseNum "abc abc" @?= Left "Expected a number"
   ]
