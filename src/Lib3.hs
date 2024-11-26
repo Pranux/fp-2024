@@ -137,20 +137,15 @@ marshallState (Lib2.State movies) =
 renderStatements :: Statements -> String
 renderStatements statements = case statements of
     Single query -> "BEGIN " ++ renderSingleQuery query ++ " END"
-    Batch queries -> "BEGIN " ++ 
-                    concatMap (\q -> renderSingleQuery q ++ "; ") queries ++
-                    "END"
+    Batch queries -> "BEGIN " ++ concatMap (\q -> renderSingleQuery q ++ "; ") queries ++ "END"
   where
     renderSingleQuery :: Lib2.Query -> String
     renderSingleQuery query = case query of
-        Lib2.AddMovie dir title year id' -> 
-            "add-movie /" ++ dir ++ "/" ++ title ++ "/" ++ show year ++ "/" ++ show id'
-        Lib2.RemoveMovie id' -> 
-            "remove-movie " ++ show id'
-        Lib2.PrintMovies -> 
-            "print-movies"
-        Lib2.CompoundQuery q1 q2 -> 
-            "compound-query " ++ renderSingleQuery q1 ++ " & " ++ renderSingleQuery q2
+        Lib2.AddMovie dir title year id' -> "add-movie /" ++ dir ++ "/" ++ title ++ "/" ++ show year ++ "/" ++ show id'
+        Lib2.RemoveMovie id' -> "remove-movie " ++ show id'
+        Lib2.RemoveAllMovies -> "remove-all-movies"
+        Lib2.PrintMovies -> "print-movies"
+        Lib2.CompoundQuery q1 q2 -> "compound-query " ++ renderSingleQuery q1 ++ " & " ++ renderSingleQuery q2
 
 -- | Updates a state according to a command.
 -- Performs file IO via ioChan if needed.
@@ -162,8 +157,7 @@ renderStatements statements = case statements of
 -- State update must be executed atomically (STM).
 -- Right contains an optional message to print, updated state
 -- is stored in transactinal variable
-stateTransition :: TVar Lib2.State -> Command -> Chan StorageOp ->
-                   IO (Either String (Maybe String))
+stateTransition :: TVar Lib2.State -> Command -> Chan StorageOp -> IO (Either String (Maybe String))
 stateTransition stateVar command ioChan = do
     currentState <- readTVarIO stateVar
     

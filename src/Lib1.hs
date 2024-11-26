@@ -5,4 +5,4 @@ module Lib1
 -- | This function returns a list of words
 -- to be autocompleted in your program's repl.
 completions :: [String]
-completions = ["remove-movie", "add-movie", "print-movies", "compound-query"]
+completions = ["remove-movie", "remove-all-movies", "add-movie", "print-movies", "compound-query"]

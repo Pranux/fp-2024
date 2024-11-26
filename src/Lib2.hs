@@ -29,6 +29,7 @@ data Movie = Movie {
 -- query type
 data Query =  AddMovie String String Integer Integer
             | RemoveMovie Integer
+            | RemoveAllMovies
             | PrintMovies
             | CompoundQuery Query Query
 
@@ -39,6 +40,8 @@ instance Eq Query where
 
     (RemoveMovie idNum1) == (RemoveMovie idNum2) =
         idNum1 == idNum2
+
+    RemoveAllMovies == RemoveAllMovies = True
 
     PrintMovies == PrintMovies = True
 
@@ -53,8 +56,8 @@ instance Eq State where
 instance Show Query where
     show (AddMovie d t y i) =
         "AddMovie: Director = " ++ d ++ ", Title = " ++ t ++ ", Year = " ++ show y ++ ", ID = " ++ show i
-    show (RemoveMovie idNum) =
-        "RemoveMovie: ID = " ++ show idNum
+    show (RemoveMovie idNum) = "RemoveMovie: ID = " ++ show idNum
+    show RemoveAllMovies = "Removed movies: "
     show PrintMovies = "Current movies: "
     show (CompoundQuery q1 q2 ) = show q1 ++ " & " ++ show q2
 
@@ -81,10 +84,11 @@ or2 a b input =
 
 -- Parser for a whole query
 parseQuery :: Parser Query
-parseQuery input = case (parseAddMovie `or2` parseRemoveMovie `or2` parsePrintMovies `or2` parseCompoundQuery) input of
-    Left "" -> Left "Invalid command."
-    Left msg -> Left msg
-    query -> query    
+parseQuery input =
+    case (parseAddMovie `or2` parseRemoveMovie `or2` parseRemoveAllMovies `or2` parsePrintMovies `or2` parseCompoundQuery) input of
+        Left "" -> Left "Invalid command."
+        Left msg -> Left msg
+        query -> query    
 
 -- Parser for AddMovie
 parseAddMovie :: Parser Query
@@ -130,6 +134,12 @@ parseRemoveMovie input =
                 case parseNum r1 of
                     Right (idNum, rest) -> Right (RemoveMovie idNum, rest)
                     _ -> Left "Invalid remove-movie input format"
+    else Left ""
+
+parseRemoveAllMovies :: Parser Query
+parseRemoveAllMovies input =
+    if "remove-all-movies" `isPrefixOf` input then
+        Right (RemoveAllMovies, drop (length "remove-all-movies") input)
     else Left ""
 
 -- Parser for print-movies
@@ -206,15 +216,19 @@ stateTransition :: State -> (Query, String) -> Either String (Maybe String, Stat
 stateTransition (State movies) (AddMovie d t y i, _) =
     let newMovie = Movie d t y i
     in if newMovie `elem` movies
-       then Left ("Movie " ++ show newMovie ++ " already exists.")
-       else Right (Just ("Added movie: " ++ show newMovie), State (newMovie : movies))
+    then Left ("Movie " ++ show newMovie ++ " already exists.")
+    else Right (Just ("Added movie: " ++ show newMovie), State (newMovie : movies))
 
 -- Handle RemoveMovie
 stateTransition (State movies) (RemoveMovie idNum, _) =
     let movieExists = any (\(Movie _ _ _ id') -> id' == idNum) movies
     in if movieExists
-       then Right (Just ("Removed movie with ID: " ++ show idNum), State (filter (\(Movie _ _ _ id') -> id' /= idNum) movies))
-       else Left ("Movie with ID " ++ show idNum ++ " not found.")
+    then Right (Just ("Removed movie with ID: " ++ show idNum), State (filter (\(Movie _ _ _ id') -> id' /= idNum) movies))
+    else Left ("Movie with ID " ++ show idNum ++ " not found.")
+
+-- Handle RemoveAll
+stateTransition (State _) (RemoveAllMovies, _) =
+    Right (Just "Removed all movies", emptyState)
 
 -- Handle PrintMovies
 stateTransition (State movies) (PrintMovies, _) =
@@ -231,10 +245,11 @@ stateTransition state (CompoundQuery q1 q2, a) =
             case stateTransition newState (q2, a) of
                 Right (msg2, finalState) ->
                     let combinedMsg = case (msg1, msg2) of
-                                          (Just m1, Just m2) | not (null m1) && not (null m2) -> Just (m1 ++ " " ++ m2)
-                                          (Just m1, _)       | not (null m1) -> Just m1
-                                          (_, Just m2)       | not (null m2) -> Just m2
-                                          _ -> Nothing
+                                        (Just m1, Just m2) | not (null m1) && not (null m2) -> Just (m1 ++ " " ++ m2)
+                                        (Just m1, _)       | not (null m1) -> Just m1
+                                        (_, Just m2)       | not (null m2) -> Just m2
+                                        _ -> Nothing
                     in Right (combinedMsg, finalState)
                 Left err -> Left err
         Left err -> Left err
+            

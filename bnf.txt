@@ -1,10 +1,11 @@
-<root> ::= <remove-movie> | <add-movie> | <print-movies> | <compound-query>
-<remove-movies> ::= remove-movies <movies>
+<root> ::= <remove-movie> | <remove-all-movies>| <add-movie> | <print-movies> | <compound-query>
+<remove-movies> ::= remove-movies <integer>
+<remove-all-movies> ::= remove-all-movies
 <add-movies> ::= add-movies <movies>
-<print-movies> ::= print-movies <movies>
+<print-movies> ::= print-movies
 <compound-query> ::= <root> " & " <root>
 
-<movies> ::= <director><title><year><id>
+<movies> ::= "/" <director> "/" <title> "/" <year> "/" <id>
 <director> ::= <string>
 <title> ::= <string> | <string><title>
 <string> ::= <char> | <char><string>
