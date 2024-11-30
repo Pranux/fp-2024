@@ -222,3 +222,4 @@ stateTransition stateVar command ioChan = do
                             atomically $ writeTVar stateVar newState
                             return $ Right message
                         Left err -> return $ Left err
+                        

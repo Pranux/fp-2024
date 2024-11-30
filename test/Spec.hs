@@ -1,4 +1,5 @@
 import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.QuickCheck as QC
 import Test.Tasty.HUnit (testCase, (@?=))
 import qualified Lib2
 import qualified Lib3
@@ -7,7 +8,51 @@ main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [unitTests, unitTests']
+tests = testGroup "Tests" [unitTests, unitTests', propertyTests]
+
+propertyTests :: TestTree
+propertyTests = testGroup "Lib3 property tests"
+  [ QC.testProperty "Statements -> String -> State -> String -> Statement" $ withMaxSuccess 100 mainTest ]
+
+mainTest :: Property
+mainTest = forAll generateStatements $ \statements ->
+  let initState = applyStatements statements Lib2.emptyState
+      renderedString = Lib3.renderStatements statements
+      parsedResult = Lib3.parseStatements renderedString
+      newState = case parsedResult of
+        Right (parsedStatements, _) -> applyStatements parsedStatements Lib2.emptyState
+        Left err -> error $ "Parsing error: " ++ err
+  in extractMovies initState === extractMovies newState
+
+generateQuery :: Gen Lib2.Query
+generateQuery = do
+  director <- elements ["Tomas", "Jonas", "Petras", "Antanas", "Kristina", "Julija"]
+  title <- elements ["Marsas", "Merkurijus", "Venera", "Uranas", "Jupiteris"]
+  year <- choose (1924, 2024)
+  id' <- choose (1, 1000)
+  return $ Lib2.AddMovie director title year id'
+
+generateStatements :: Gen Lib3.Statements
+generateStatements = oneof [Lib3.Batch <$> listOf1 generateQuery, Lib3.Single <$> generateQuery]
+
+extractMovies :: Lib2.State -> [Lib2.Movie]
+extractMovies (Lib2.State movies) = movies
+
+applyStatements :: Lib3.Statements -> Lib2.State -> Lib2.State
+
+applyStatements (Lib3.Batch queries) state = applyQueries queries state
+  where
+    applyQueries [] currentState = currentState
+    applyQueries (query:rest) currentState =
+      case Lib2.stateTransition currentState (query, "") of
+        Right (_, newState) -> applyQueries rest newState
+        Left err -> error $ "Query failed: " ++ err
+
+applyStatements (Lib3.Single query) state =
+  case Lib2.stateTransition state (query, "") of
+    Right (_, newState) -> newState
+    Left err -> error $ "Query failed: " ++ err
+
 
 unitTests' :: TestTree
 unitTests' = testGroup "Lib3 tests"
